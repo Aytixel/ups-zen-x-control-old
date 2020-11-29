@@ -1,9 +1,18 @@
 extern crate hidapi;
 
+use fltk::{app::*, button::*, frame::*, window::*};
 use hidapi::HidApi;
 use std::{thread, time};
 
 fn main() {
+    let app = App::default().with_scheme(AppScheme::Gtk);
+    let mut wind = Window::new(100, 100, 400, 300, "Zen-X Control Panel");
+    let mut frame = Frame::new(0, 0, 400, 200, "");
+    let mut but = Button::new(0, 200, 400, 100, "Click me!");
+    wind.end();
+    wind.show();
+    but.set_callback(move || frame.set_label("Hello World!"));
+    app.run().unwrap();
     match HidApi::new() {
         Ok(api) => {
             let device = api.open(1, 0).unwrap();
