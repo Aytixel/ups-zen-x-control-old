@@ -1,2 +1,2 @@
-# ups-zen-x_control
+# ups zen-x control
 Conrol panel for Infosec Zen-X UPS 
