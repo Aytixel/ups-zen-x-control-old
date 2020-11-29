@@ -13,3 +13,4 @@ opt-level = 0
 opt-level = 3
 
 [dependencies]
+hidapi = "1.2.5"
