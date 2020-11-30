@@ -11,22 +11,37 @@ fn main() {
     let mut but = Button::new(0, 200, 400, 100, "Click me!");
     wind.end();
     wind.show();
-    but.set_callback(move || frame.set_label("Hello World!"));
-    app.run().unwrap();
+    //but.set_callback(move || frame.set_label("Hello World!"));
     match HidApi::new() {
         Ok(api) => {
             let device = api.open(1, 0).unwrap();
-            loop {
+            let expected_data: Vec<f32> = device.get_indexed_string(29).unwrap().unwrap()[1..21]
+                .split(" ")
+                .map(|x| x.parse::<f32>().unwrap())
+                .collect();
+            thread::spawn(move || loop {
                 println!("Ups Info :");
-                println!("{}", device.get_indexed_string(3).unwrap().unwrap());
-                println!("{}", device.get_indexed_string(29).unwrap().unwrap());
+                let rawdata = device.get_indexed_string(3).unwrap().unwrap();
+                let flags: Vec<u8> = rawdata[38..46]
+                    .split("")
+                    .filter(|x| x.len() > 0)
+                    .map(|x| x.parse::<u8>().unwrap())
+                    .collect();
+                let data: Vec<f32> = rawdata[1..32]
+                    .split(" ")
+                    .map(|x| x.parse::<f32>().unwrap())
+                    .collect();
+                frame.set_label(&data.iter().fold(String::new(), |acc, a| {
+                    acc + &String::from(" ") + &a.to_string()
+                }));
+                println!("{:?} {:?}", data, flags);
+                println!("{:?}", expected_data);
                 println!("");
                 thread::sleep(time::Duration::new(10, 0));
-            }
+            });
+            app.run().unwrap();
         }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-        }
+        Err(e) => eprintln!("Error: {}", e),
     }
 }
 
