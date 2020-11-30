@@ -1,11 +1,13 @@
 extern crate fltk;
 extern crate hidapi;
 extern crate system_shutdown;
+extern crate systray;
 
-use fltk::{app::*, button::*, frame::*, misc::*, window::*};
+use fltk::{app::*, button::*, frame::*, image::*, misc::*, window::*};
 use hidapi::HidApi;
 use std::{thread, time};
 use system_shutdown::shutdown;
+use systray::{Application, Error};
 
 fn window_setup() -> (
     Window,
@@ -73,8 +75,8 @@ fn window_setup() -> (
     battery_state.set_label_color(Color::Red);
     leakage_current.set_label_color(Color::White);
     window.set_color(Color::from_rgb(51, 51, 51));
+    window.set_icon(Some(JpegImage::load("icon.jpg").unwrap()));
     window.end();
-    window.show();
     for _ in 0..10 {
         input_voltage.add(0., "", Color::Green);
         frequency.add(0., "", Color::Green);
@@ -99,8 +101,9 @@ fn window_setup() -> (
 
 fn main() {
     let app = App::default().with_scheme(AppScheme::Gtk);
+    let mut tray = Application::new().unwrap();
     let (
-        _,
+        mut window,
         mut test_button,
         mut switch_button,
         mut shutdown_button,
@@ -316,7 +319,15 @@ fn main() {
         }
         Err(e) => eprintln!("Error: {}", e),
     }
-    app.run().unwrap();
+    tray.set_icon_from_file("icon.ico").unwrap();
+    tray.set_tooltip("Zen-X Control Panel").unwrap();
+    tray.add_menu_item("Show", move |_| {
+        window.show();
+        app.run().unwrap();
+        Ok::<_, Error>(())
+    })
+    .unwrap();
+    tray.wait_for_message().unwrap();
 }
 
 /*
