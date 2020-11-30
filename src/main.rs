@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 extern crate fltk;
 extern crate hidapi;
 extern crate system_shutdown;
