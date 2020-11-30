@@ -128,6 +128,7 @@ fn main() {
                 battery_voltage.set_label(format!("Battery Voltage : {}", data[5]).as_str());
                 println!("{:?}", expected_data);
                 println!("");
+                app.redraw();
                 thread::sleep(time::Duration::new(1, 0));
             });
             app.run().unwrap();
