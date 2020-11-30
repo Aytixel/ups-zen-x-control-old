@@ -2,7 +2,12 @@ extern crate hidapi;
 
 use fltk::{app::*, button::*, frame::*, misc::*, window::*};
 use hidapi::HidApi;
-use std::{thread, time};
+use std::{sync::mpsc, thread, time};
+
+#[derive(Debug, Copy, Clone)]
+pub enum Message {
+    Test(bool),
+}
 
 fn window_setup() -> (
     Window,
@@ -16,16 +21,25 @@ fn window_setup() -> (
     Chart,
     Frame,
 ) {
-    let mut window = Window::new(100, 100, 1280, 720, "Zen-X Control Panel");
+    let mut window = Window::new(100, 100, 1000, 360, "Zen-X Control Panel");
     let frame = Frame::new(0, 300, 400, 200, "");
-    let test_button = Button::new(0, 500, 400, 100, "Test");
-    let switch_button = Button::new(0, 500, 400, 100, "Switch");
-    let shutdown_button = Button::new(0, 500, 400, 100, "Shutdown");
+    let mut test_button = Button::new(440, 20, 120, 60, "Test");
+    let mut switch_button = Button::new(440, 140, 120, 60, "Switch");
+    let mut shutdown_button = Button::new(440, 260, 120, 60, "Shutdown");
     let mut input_voltage = Chart::new(0, 0, 400, 100, "Input Voltage");
     let mut frequency = Chart::new(0, 120, 400, 100, "Frequency");
     let mut output_voltage_needed = Chart::new(600, 0, 400, 100, "Ouput Voltage Needed");
     let mut output_voltage = Chart::new(600, 120, 400, 100, "Ouput Voltage");
     let mut battery_voltage = Chart::new(600, 240, 400, 100, "Battery Voltage");
+    test_button.set_frame(FrameType::FlatBox);
+    test_button.set_color(Color::from_rgb(41, 41, 41));
+    test_button.set_label_color(Color::White);
+    switch_button.set_frame(FrameType::FlatBox);
+    switch_button.set_color(Color::from_rgb(41, 41, 41));
+    switch_button.set_label_color(Color::White);
+    shutdown_button.set_frame(FrameType::FlatBox);
+    shutdown_button.set_color(Color::from_rgb(41, 41, 41));
+    shutdown_button.set_label_color(Color::White);
     input_voltage.set_type(ChartType::Line);
     input_voltage.set_bounds(210., 250.);
     input_voltage.set_color(Color::from_rgb(41, 41, 41));
@@ -84,9 +98,9 @@ fn main() {
     let app = App::default().with_scheme(AppScheme::Gtk);
     let (
         window,
-        test_button,
-        switch_button,
-        shutdown_button,
+        mut test_button,
+        mut switch_button,
+        mut shutdown_button,
         mut input_voltage,
         mut frequency,
         mut output_voltage_needed,
@@ -94,14 +108,33 @@ fn main() {
         mut battery_voltage,
         mut frame,
     ) = window_setup();
-    //but.set_callback(move || frame.set_label("Hello World!"));
     match HidApi::new() {
         Ok(api) => {
             let device = api.open(1, 0).unwrap();
+            let test_device = api.open(1, 0).unwrap();
+            let switch_device = api.open(1, 0).unwrap();
+            let shutdown_device = api.open(1, 0).unwrap();
             let expected_data: Vec<f64> = device.get_indexed_string(29).unwrap().unwrap()[1..21]
                 .split(" ")
                 .map(|x| x.parse::<f64>().unwrap())
                 .collect();
+            test_button.set_callback(move || {
+                test_device.get_indexed_string(4);
+            });
+            switch_button.set_callback(move || {
+                let is_on_battery = switch_device.get_indexed_string(3).unwrap().unwrap()[40..41]
+                    .parse::<u8>()
+                    .unwrap();
+                println!("Read: {}", is_on_battery);
+                if is_on_battery == 1 {
+                    switch_device.get_indexed_string(4);
+                } else {
+                    switch_device.get_indexed_string(5);
+                }
+            });
+            shutdown_button.set_callback(move || {
+                shutdown_device.get_indexed_string(24);
+            });
             thread::spawn(move || loop {
                 println!("Ups Info :");
                 let rawdata = device.get_indexed_string(3).unwrap().unwrap();
@@ -115,20 +148,30 @@ fn main() {
                     .map(|x| x.parse::<f64>().unwrap())
                     .collect();
                 println!("{:?} {:?}", data, flags);
-                input_voltage.add(data[0], "", Color::White);
+                input_voltage.add(data[0], "", Color::Green);
                 input_voltage.set_label(format!("Input Voltage : {}", data[0]).as_str());
-                frequency.add(data[4], "", Color::White);
+                frequency.add(data[4], "", Color::Green);
                 frequency.set_label(format!("Frequency : {}", data[4]).as_str());
-                output_voltage_needed.add(data[1], "", Color::White);
+                output_voltage_needed.add(data[1], "", Color::Green);
                 output_voltage_needed
                     .set_label(format!("Output Voltage Needed : {}", data[1]).as_str());
-                output_voltage.add(data[2], "", Color::White);
+                output_voltage.add(data[2], "", Color::Green);
                 output_voltage.set_label(format!("Output Voltage : {}", data[2]).as_str());
-                battery_voltage.add(data[5], "", Color::White);
+                battery_voltage.add(
+                    data[5],
+                    "",
+                    if data[5] > 12.72 {
+                        Color::Green
+                    } else if data[5] > 12.36 {
+                        Color::Yellow
+                    } else {
+                        Color::Red
+                    },
+                );
                 battery_voltage.set_label(format!("Battery Voltage : {}", data[5]).as_str());
+                app.redraw();
                 println!("{:?}", expected_data);
                 println!("");
-                app.redraw();
                 thread::sleep(time::Duration::new(1, 0));
             });
             app.run().unwrap();
@@ -152,7 +195,7 @@ get_indexed_string(3) ups info :
     battery voltage (V)
     status flag (the first tell if is on battery or not)
 get_indexed_string(4) test ups
-get_indexed_string(20) switch battery/AC
+get_indexed_string(5) switch to battery
 get_indexed_string(24, 16, 8) ups shutdown
 get_indexed_string(29) expected values
     expected minimum input voltage (V)
