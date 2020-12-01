@@ -7,7 +7,7 @@ extern crate systray;
 
 use fltk::{app::*, button::*, frame::*, image::*, misc::*, window::*};
 use hidapi::HidApi;
-use std::{thread, time};
+use std::{ffi::CStr, thread, time};
 use system_shutdown::shutdown;
 use systray::{Application, Error};
 
@@ -102,6 +102,11 @@ fn window_setup() -> (
 }
 
 fn main() {
+    let device_path = CStr::from_bytes_with_nul(
+        b"\\\\?\\hid#vid_0001&pid_0000#6&14bd8cd6&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}\0",
+    )
+    .unwrap();
+    println!("test");
     let app = App::default().with_scheme(AppScheme::Gtk);
     let mut tray = Application::new().unwrap();
     let (
@@ -120,28 +125,28 @@ fn main() {
     match HidApi::new() {
         Ok(api) => {
             thread::spawn(move || loop {
-                let device = match api.open(1, 0) {
+                let device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
                         thread::sleep(time::Duration::new(5, 0));
                         continue;
                     }
                 };
-                let test_device = match api.open(1, 0) {
+                let test_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
                         thread::sleep(time::Duration::new(5, 0));
                         continue;
                     }
                 };
-                let switch_device = match api.open(1, 0) {
+                let switch_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
                         thread::sleep(time::Duration::new(5, 0));
                         continue;
                     }
                 };
-                let shutdown_device = match api.open(1, 0) {
+                let shutdown_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
                         thread::sleep(time::Duration::new(5, 0));
