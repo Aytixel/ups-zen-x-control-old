@@ -15,32 +15,27 @@ fn window_setup() -> (
     Window,
     Button,
     Button,
-    Button,
     Chart,
     Chart,
     Chart,
     Chart,
     Chart,
-    Frame,
+    Chart,
     Frame,
 ) {
     let mut window = Window::new(100, 100, 1000, 360, "Zen-X Control Panel");
     let mut test_button = Button::new(440, 20, 120, 60, "Test");
-    let mut switch_button = Button::new(440, 140, 120, 60, "Switch");
-    let mut shutdown_button = Button::new(440, 260, 120, 60, "Shutdown");
+    let mut shutdown_button = Button::new(440, 140, 120, 60, "Shutdown");
     let mut input_voltage = Chart::new(0, 0, 400, 100, "Input Voltage");
     let mut frequency = Chart::new(0, 120, 400, 100, "Frequency");
-    let mut output_voltage_needed = Chart::new(600, 0, 400, 100, "Ouput Voltage Needed");
-    let mut output_voltage = Chart::new(600, 120, 400, 100, "Ouput Voltage");
-    let mut battery_voltage = Chart::new(600, 240, 400, 100, "Battery Voltage");
-    let mut battery_state = Frame::new(0, 300, 400, 50, "Battery");
-    let mut leakage_current = Frame::new(0, 250, 400, 50, "Leakage Current");
+    let mut current_intensity = Chart::new(0, 240, 400, 100, "Current Intensity");
+    let mut output_voltage = Chart::new(600, 0, 400, 100, "Ouput Voltage");
+    let mut battery_voltage = Chart::new(600, 120, 400, 100, "Battery Voltage");
+    let mut power_draw = Chart::new(600, 240, 400, 100, "Power Draw");
+    let mut battery_state = Frame::new(440, 240, 120, 100, "Battery");
     test_button.set_frame(FrameType::FlatBox);
     test_button.set_color(Color::from_rgb(41, 41, 41));
     test_button.set_label_color(Color::White);
-    switch_button.set_frame(FrameType::FlatBox);
-    switch_button.set_color(Color::from_rgb(41, 41, 41));
-    switch_button.set_label_color(Color::White);
     shutdown_button.set_frame(FrameType::FlatBox);
     shutdown_button.set_color(Color::from_rgb(41, 41, 41));
     shutdown_button.set_label_color(Color::White);
@@ -56,12 +51,12 @@ fn window_setup() -> (
     frequency.set_label_color(Color::White);
     frequency.set_maximum_size(10);
     frequency.set_frame(FrameType::FlatBox);
-    output_voltage_needed.set_type(ChartType::Line);
-    output_voltage_needed.set_bounds(210., 250.);
-    output_voltage_needed.set_color(Color::from_rgb(41, 41, 41));
-    output_voltage_needed.set_label_color(Color::White);
-    output_voltage_needed.set_maximum_size(10);
-    output_voltage_needed.set_frame(FrameType::FlatBox);
+    current_intensity.set_type(ChartType::Line);
+    current_intensity.set_bounds(0.5, 2.5);
+    current_intensity.set_color(Color::from_rgb(41, 41, 41));
+    current_intensity.set_label_color(Color::White);
+    current_intensity.set_maximum_size(10);
+    current_intensity.set_frame(FrameType::FlatBox);
     output_voltage.set_type(ChartType::Line);
     output_voltage.set_bounds(210., 250.);
     output_voltage.set_color(Color::from_rgb(41, 41, 41));
@@ -74,30 +69,35 @@ fn window_setup() -> (
     battery_voltage.set_label_color(Color::White);
     battery_voltage.set_maximum_size(10);
     battery_voltage.set_frame(FrameType::FlatBox);
+    power_draw.set_type(ChartType::Line);
+    power_draw.set_bounds(100., 625.);
+    power_draw.set_color(Color::from_rgb(41, 41, 41));
+    power_draw.set_label_color(Color::White);
+    power_draw.set_maximum_size(10);
+    power_draw.set_frame(FrameType::FlatBox);
     battery_state.set_label_color(Color::Red);
-    leakage_current.set_label_color(Color::White);
     window.set_color(Color::from_rgb(51, 51, 51));
     window.set_icon(Some(JpegImage::load("icon.jpg").unwrap()));
     window.end();
     for _ in 0..10 {
         input_voltage.add(0., "", Color::Green);
         frequency.add(0., "", Color::Green);
-        output_voltage_needed.add(0., "", Color::Green);
+        current_intensity.add(0., "", Color::Green);
+        power_draw.add(0., "", Color::Green);
         output_voltage.add(0., "", Color::Green);
         battery_voltage.add(0., "", Color::Green);
     }
     (
         window,
         test_button,
-        switch_button,
         shutdown_button,
         input_voltage,
         frequency,
-        output_voltage_needed,
+        current_intensity,
         output_voltage,
         battery_voltage,
+        power_draw,
         battery_state,
-        leakage_current,
     )
 }
 
@@ -106,21 +106,19 @@ fn main() {
         b"\\\\?\\hid#vid_0001&pid_0000#6&14bd8cd6&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}\0",
     )
     .unwrap();
-    println!("test");
     let app = App::default().with_scheme(AppScheme::Gtk);
     let mut tray = Application::new().unwrap();
     let (
         mut window,
         mut test_button,
-        mut switch_button,
         mut shutdown_button,
         mut input_voltage,
         mut frequency,
-        mut output_voltage_needed,
+        mut current_intensity,
         mut output_voltage,
         mut battery_voltage,
+        mut power_draw,
         mut battery_state,
-        mut leakage_current,
     ) = window_setup();
     match HidApi::new() {
         Ok(api) => {
@@ -133,13 +131,6 @@ fn main() {
                     }
                 };
                 let test_device = match api.open_path(device_path) {
-                    Ok(device) => device,
-                    Err(_) => {
-                        thread::sleep(time::Duration::new(5, 0));
-                        continue;
-                    }
-                };
-                let switch_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
                         thread::sleep(time::Duration::new(5, 0));
@@ -162,19 +153,10 @@ fn main() {
                 } else {
                     continue;
                 };
+                let computed_expected_power_draw =
+                    (expected_data[1] * expected_data[3]).round() / 10.;
                 test_button.set_callback(move || {
                     test_device.get_indexed_string(4).unwrap();
-                });
-                switch_button.set_callback(move || {
-                    let is_on_battery = switch_device.get_indexed_string(3).unwrap().unwrap()
-                        [43..44]
-                        .parse::<u8>()
-                        .unwrap();
-                    if is_on_battery == 1 {
-                        switch_device.get_indexed_string(4).unwrap();
-                    } else {
-                        switch_device.get_indexed_string(5).unwrap();
-                    }
                 });
                 shutdown_button.set_callback(move || {
                     shutdown_device.get_indexed_string(24).unwrap();
@@ -193,6 +175,7 @@ fn main() {
                                     .split(" ")
                                     .map(|x| x.parse::<f64>().unwrap_or(0.))
                                     .collect();
+                                let computed_power_draw = (data[3] * data[2]).round() / 10.;
                                 input_voltage.add(
                                     data[0],
                                     "",
@@ -217,7 +200,7 @@ fn main() {
                                     "",
                                     if data[4] == expected_data[3] {
                                         Color::Green
-                                    } else if (data[4] - expected_data[3]).abs() < 0.3 {
+                                    } else if (data[4] - expected_data[3]).abs() < 5. {
                                         Color::Yellow
                                     } else {
                                         Color::Red
@@ -227,25 +210,22 @@ fn main() {
                                     format!("Frequency : {}Hz / {}Hz", expected_data[3], data[4])
                                         .as_str(),
                                 );
-                                output_voltage_needed.add(
-                                    data[1],
+                                current_intensity.add(
+                                    data[3] / 10.,
                                     "",
-                                    if data[1] >= expected_data[0] + 20. {
-                                        Color::Red
-                                    } else if data[1] >= expected_data[0] + 35. {
-                                        Color::Yellow
-                                    } else if data[1] >= expected_data[0] {
+                                    if data[3] / 10. <= expected_data[1] / 10. + 1.2 {
                                         Color::Green
-                                    } else if data[1] >= expected_data[0] - 3. {
+                                    } else if data[3] / 10. <= expected_data[1] / 10. + 1.2 {
                                         Color::Yellow
                                     } else {
                                         Color::Red
                                     },
                                 );
-                                output_voltage_needed.set_label(
+                                current_intensity.set_label(
                                     format!(
-                                        "Output Voltage Needed : {}V / {}V",
-                                        expected_data[0], data[1]
+                                        "Current Intensity : {}A / {}A",
+                                        expected_data[1] / 10.,
+                                        data[3] / 10.
                                     )
                                     .as_str(),
                                 );
@@ -289,6 +269,26 @@ fn main() {
                                     )
                                     .as_str(),
                                 );
+                                power_draw.add(
+                                    computed_power_draw,
+                                    "",
+                                    if computed_power_draw <= computed_expected_power_draw + 185. {
+                                        Color::Green
+                                    } else if computed_power_draw
+                                        <= computed_expected_power_draw + 385.
+                                    {
+                                        Color::Yellow
+                                    } else {
+                                        Color::Red
+                                    },
+                                );
+                                power_draw.set_label(
+                                    format!(
+                                        "Power Draw : {}W / {}W",
+                                        computed_expected_power_draw, computed_power_draw
+                                    )
+                                    .as_str(),
+                                );
                                 battery_state.set_label_color(if flags[0] == 1 {
                                     Color::Green
                                 } else if flags[2] == 1 {
@@ -304,13 +304,6 @@ fn main() {
                                         } else {
                                             "Off"
                                         }
-                                    )
-                                    .as_str(),
-                                );
-                                leakage_current.set_label(
-                                    format!(
-                                        "Leakage Current : {}mA / {}mA",
-                                        expected_data[1], data[3]
                                     )
                                     .as_str(),
                                 );
@@ -347,17 +340,16 @@ get_indexed_string(3) ups info :
     input voltage (V)
     ouput voltage needed (V)
     ouput voltage (V)
-    leakage current (mA)
+    current intensity (dA)
     input frequency (Hz)
     battery voltage (V)
     status flag (the first tell if is on battery or not)
 get_indexed_string(4) test ups
-get_indexed_string(5) switch to battery
 get_indexed_string(24, 16, 8) ups shutdown
 get_indexed_string(29) expected values
-    expected minimum input voltage (V)
-    expected leakage current (mA)
-    expected minimum battery voltage (V)
+    expected input voltage (V)
+    expected current intensity (dA)
+    expected battery voltage (V)
     expected input frequency (Hz)
 
 */
