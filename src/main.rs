@@ -6,10 +6,18 @@ extern crate system_shutdown;
 extern crate systray;
 
 use fltk::{app::*, button::*, frame::*, image::*, misc::*, window::*};
-use hidapi::HidApi;
-use std::{ffi::CStr, thread, time};
-use system_shutdown::shutdown;
+use hidapi::{HidApi, HidDevice};
+use std::{
+    ffi::CStr,
+    thread::{sleep, spawn},
+    time::Duration,
+};
 use systray::{Application, Error};
+
+const EXPECTED_VOLTAGE: f64 = 220.;
+const EXPECTED_INTENSITY: f64 = 0.3;
+const EXPECTED_BATTERY_VOLTAGE: f64 = 12.;
+const EXPECTED_FREQUENCY: f64 = 50.;
 
 fn window_setup() -> (
     Window,
@@ -26,79 +34,84 @@ fn window_setup() -> (
     let mut window = Window::new(100, 100, 1000, 360, "Zen-X Control Panel");
     let mut test_button = Button::new(440, 20, 120, 60, "Test");
     let mut shutdown_button = Button::new(440, 140, 120, 60, "Shutdown");
-    let mut input_voltage = Chart::new(0, 0, 400, 100, "Input Voltage");
-    let mut frequency = Chart::new(0, 120, 400, 100, "Frequency");
-    let mut current_intensity = Chart::new(0, 240, 400, 100, "Current Intensity");
-    let mut output_voltage = Chart::new(600, 0, 400, 100, "Ouput Voltage");
-    let mut battery_voltage = Chart::new(600, 120, 400, 100, "Battery Voltage");
-    let mut power_draw = Chart::new(600, 240, 400, 100, "Power Draw");
-    let mut battery_state = Frame::new(440, 240, 120, 100, "Battery");
+    let mut input_voltage_chart = Chart::new(0, 0, 400, 100, "Input Voltage");
+    let mut frequency_chart = Chart::new(0, 120, 400, 100, "Frequency");
+    let mut current_intensity_chart = Chart::new(0, 240, 400, 100, "Current Intensity");
+    let mut output_voltage_chart = Chart::new(600, 0, 400, 100, "Ouput Voltage");
+    let mut battery_voltage_chart = Chart::new(600, 120, 400, 100, "Battery Voltage");
+    let mut power_draw_chart = Chart::new(600, 240, 400, 100, "Power Draw");
+    let mut battery_state_label = Frame::new(440, 240, 120, 100, "Battery");
     test_button.set_frame(FrameType::FlatBox);
     test_button.set_color(Color::from_rgb(41, 41, 41));
     test_button.set_label_color(Color::White);
     shutdown_button.set_frame(FrameType::FlatBox);
     shutdown_button.set_color(Color::from_rgb(41, 41, 41));
     shutdown_button.set_label_color(Color::White);
-    input_voltage.set_type(ChartType::Line);
-    input_voltage.set_bounds(210., 250.);
-    input_voltage.set_color(Color::from_rgb(41, 41, 41));
-    input_voltage.set_label_color(Color::White);
-    input_voltage.set_maximum_size(10);
-    input_voltage.set_frame(FrameType::FlatBox);
-    frequency.set_type(ChartType::Line);
-    frequency.set_bounds(49., 51.);
-    frequency.set_color(Color::from_rgb(41, 41, 41));
-    frequency.set_label_color(Color::White);
-    frequency.set_maximum_size(10);
-    frequency.set_frame(FrameType::FlatBox);
-    current_intensity.set_type(ChartType::Line);
-    current_intensity.set_bounds(0.5, 2.5);
-    current_intensity.set_color(Color::from_rgb(41, 41, 41));
-    current_intensity.set_label_color(Color::White);
-    current_intensity.set_maximum_size(10);
-    current_intensity.set_frame(FrameType::FlatBox);
-    output_voltage.set_type(ChartType::Line);
-    output_voltage.set_bounds(210., 250.);
-    output_voltage.set_color(Color::from_rgb(41, 41, 41));
-    output_voltage.set_label_color(Color::White);
-    output_voltage.set_maximum_size(10);
-    output_voltage.set_frame(FrameType::FlatBox);
-    battery_voltage.set_type(ChartType::Line);
-    battery_voltage.set_bounds(11., 14.);
-    battery_voltage.set_color(Color::from_rgb(41, 41, 41));
-    battery_voltage.set_label_color(Color::White);
-    battery_voltage.set_maximum_size(10);
-    battery_voltage.set_frame(FrameType::FlatBox);
-    power_draw.set_type(ChartType::Line);
-    power_draw.set_bounds(100., 625.);
-    power_draw.set_color(Color::from_rgb(41, 41, 41));
-    power_draw.set_label_color(Color::White);
-    power_draw.set_maximum_size(10);
-    power_draw.set_frame(FrameType::FlatBox);
-    battery_state.set_label_color(Color::Red);
+    input_voltage_chart.set_type(ChartType::Line);
+    input_voltage_chart.set_bounds(210., 250.);
+    input_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
+    input_voltage_chart.set_label_color(Color::White);
+    input_voltage_chart.set_maximum_size(10);
+    input_voltage_chart.set_frame(FrameType::FlatBox);
+    frequency_chart.set_type(ChartType::Line);
+    frequency_chart.set_bounds(49., 51.);
+    frequency_chart.set_color(Color::from_rgb(41, 41, 41));
+    frequency_chart.set_label_color(Color::White);
+    frequency_chart.set_maximum_size(10);
+    frequency_chart.set_frame(FrameType::FlatBox);
+    current_intensity_chart.set_type(ChartType::Line);
+    current_intensity_chart.set_bounds(0.5, 2.5);
+    current_intensity_chart.set_color(Color::from_rgb(41, 41, 41));
+    current_intensity_chart.set_label_color(Color::White);
+    current_intensity_chart.set_maximum_size(10);
+    current_intensity_chart.set_frame(FrameType::FlatBox);
+    output_voltage_chart.set_type(ChartType::Line);
+    output_voltage_chart.set_bounds(210., 250.);
+    output_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
+    output_voltage_chart.set_label_color(Color::White);
+    output_voltage_chart.set_maximum_size(10);
+    output_voltage_chart.set_frame(FrameType::FlatBox);
+    battery_voltage_chart.set_type(ChartType::Line);
+    battery_voltage_chart.set_bounds(11., 14.);
+    battery_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
+    battery_voltage_chart.set_label_color(Color::White);
+    battery_voltage_chart.set_maximum_size(10);
+    battery_voltage_chart.set_frame(FrameType::FlatBox);
+    power_draw_chart.set_type(ChartType::Line);
+    power_draw_chart.set_bounds(100., 625.);
+    power_draw_chart.set_color(Color::from_rgb(41, 41, 41));
+    power_draw_chart.set_label_color(Color::White);
+    power_draw_chart.set_maximum_size(10);
+    power_draw_chart.set_frame(FrameType::FlatBox);
+    battery_state_label.set_label_color(Color::Red);
     window.set_color(Color::from_rgb(51, 51, 51));
     window.set_icon(Some(JpegImage::load("icon.jpg").unwrap()));
     window.end();
     for _ in 0..10 {
-        input_voltage.add(0., "", Color::Green);
-        frequency.add(0., "", Color::Green);
-        current_intensity.add(0., "", Color::Green);
-        power_draw.add(0., "", Color::Green);
-        output_voltage.add(0., "", Color::Green);
-        battery_voltage.add(0., "", Color::Green);
+        input_voltage_chart.add(0., "", Color::Green);
+        frequency_chart.add(0., "", Color::Green);
+        current_intensity_chart.add(0., "", Color::Green);
+        power_draw_chart.add(0., "", Color::Green);
+        output_voltage_chart.add(0., "", Color::Green);
+        battery_voltage_chart.add(0., "", Color::Green);
     }
     (
         window,
         test_button,
         shutdown_button,
-        input_voltage,
-        frequency,
-        current_intensity,
-        output_voltage,
-        battery_voltage,
-        power_draw,
-        battery_state,
+        input_voltage_chart,
+        frequency_chart,
+        current_intensity_chart,
+        output_voltage_chart,
+        battery_voltage_chart,
+        power_draw_chart,
+        battery_state_label,
     )
+}
+
+fn shutdown(device: &HidDevice) {
+    device.get_indexed_string(24).unwrap();
+    system_shutdown::shutdown().unwrap();
 }
 
 fn main() {
@@ -113,54 +126,70 @@ fn main() {
         mut test_button,
         mut shutdown_button,
         mut input_voltage,
-        mut frequency,
-        mut current_intensity,
-        mut output_voltage,
-        mut battery_voltage,
-        mut power_draw,
-        mut battery_state,
+        mut frequency_chart,
+        mut current_intensity_chart,
+        mut output_voltage_chart,
+        mut battery_voltage_chart,
+        mut power_draw_chart,
+        mut battery_state_label,
     ) = window_setup();
     match HidApi::new() {
         Ok(api) => {
-            thread::spawn(move || loop {
+            spawn(move || loop {
                 let device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
-                        thread::sleep(time::Duration::new(5, 0));
+                        sleep(Duration::new(5, 0));
                         continue;
                     }
                 };
                 let test_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
-                        thread::sleep(time::Duration::new(5, 0));
+                        sleep(Duration::new(5, 0));
                         continue;
                     }
                 };
                 let shutdown_device = match api.open_path(device_path) {
                     Ok(device) => device,
                     Err(_) => {
-                        thread::sleep(time::Duration::new(5, 0));
+                        sleep(Duration::new(5, 0));
                         continue;
                     }
                 };
-                let expected_raw_data = device.get_indexed_string(29).unwrap().unwrap();
-                let expected_data: Vec<f64> = if expected_raw_data.len() == 22 {
-                    expected_raw_data[1..21]
-                        .split(" ")
-                        .map(|x| x.parse::<f64>().unwrap_or(0.))
-                        .collect()
-                } else {
-                    continue;
+                let background_device = match api.open_path(device_path) {
+                    Ok(device) => device,
+                    Err(_) => {
+                        sleep(Duration::new(5, 0));
+                        continue;
+                    }
                 };
-                let computed_expected_power_draw =
-                    (expected_data[1] * expected_data[3]).round() / 10.;
+                let auto_shutdown = spawn(move || loop {
+                    match background_device.get_indexed_string(3).unwrap_or(None) {
+                        Some(raw_data) => {
+                            if raw_data.len() == 47
+                                && raw_data[38..39].parse::<u8>().unwrap_or(0) == 1
+                            {
+                                if raw_data[28..32].parse::<f64>().unwrap_or(0.)
+                                    <= EXPECTED_BATTERY_VOLTAGE - 0.1
+                                {
+                                    shutdown(&background_device);
+                                }
+                            }
+                        }
+                        None => {
+                            sleep(Duration::new(15, 0));
+                            break;
+                        }
+                    }
+                    sleep(Duration::new(20, 0));
+                });
+                let computed_expected_power_draw = (EXPECTED_INTENSITY * EXPECTED_VOLTAGE).round();
                 test_button.set_callback(move || {
                     test_device.get_indexed_string(4).unwrap();
                 });
                 shutdown_button.set_callback(move || {
-                    shutdown_device.get_indexed_string(24).unwrap();
-                    shutdown().unwrap();
+                    shutdown(&shutdown_device);
                 });
                 loop {
                     match device.get_indexed_string(3).unwrap_or(None) {
@@ -179,79 +208,79 @@ fn main() {
                                 input_voltage.add(
                                     data[0],
                                     "",
-                                    if data[0] >= expected_data[0] + 20. {
+                                    if data[0] >= EXPECTED_VOLTAGE + 20. {
                                         Color::Red
-                                    } else if data[0] >= expected_data[0] + 35. {
+                                    } else if data[0] >= EXPECTED_VOLTAGE + 35. {
                                         Color::Yellow
-                                    } else if data[0] >= expected_data[0] {
+                                    } else if data[0] >= EXPECTED_VOLTAGE {
                                         Color::Green
-                                    } else if data[0] >= expected_data[0] - 3. {
+                                    } else if data[0] >= EXPECTED_VOLTAGE - 3. {
                                         Color::Yellow
                                     } else {
                                         Color::Red
                                     },
                                 );
                                 input_voltage.set_label(
-                                    format!("Input Voltage : {}V / {}V", expected_data[0], data[0])
+                                    format!("Input Voltage : {}V / {}V", EXPECTED_VOLTAGE, data[0])
                                         .as_str(),
                                 );
-                                frequency.add(
+                                frequency_chart.add(
                                     data[4],
                                     "",
-                                    if data[4] == expected_data[3] {
+                                    if data[4] == EXPECTED_FREQUENCY {
                                         Color::Green
-                                    } else if (data[4] - expected_data[3]).abs() < 5. {
+                                    } else if (data[4] - EXPECTED_FREQUENCY).abs() < 5. {
                                         Color::Yellow
                                     } else {
                                         Color::Red
                                     },
                                 );
-                                frequency.set_label(
-                                    format!("Frequency : {}Hz / {}Hz", expected_data[3], data[4])
+                                frequency_chart.set_label(
+                                    format!("Frequency : {}Hz / {}Hz", EXPECTED_FREQUENCY, data[4])
                                         .as_str(),
                                 );
-                                current_intensity.add(
+                                current_intensity_chart.add(
                                     data[3] / 10.,
                                     "",
-                                    if data[3] / 10. <= expected_data[1] / 10. + 1.2 {
+                                    if data[3] / 10. <= EXPECTED_INTENSITY + 1.2 {
                                         Color::Green
-                                    } else if data[3] / 10. <= expected_data[1] / 10. + 1.2 {
+                                    } else if data[3] / 10. <= EXPECTED_INTENSITY + 1.2 {
                                         Color::Yellow
                                     } else {
                                         Color::Red
                                     },
                                 );
-                                current_intensity.set_label(
+                                current_intensity_chart.set_label(
                                     format!(
                                         "Current Intensity : {}A / {}A",
-                                        expected_data[1] / 10.,
+                                        EXPECTED_INTENSITY,
                                         data[3] / 10.
                                     )
                                     .as_str(),
                                 );
-                                output_voltage.add(
+                                output_voltage_chart.add(
                                     data[2],
                                     "",
-                                    if data[2] >= expected_data[0] + 20. {
+                                    if data[2] >= EXPECTED_VOLTAGE + 20. {
                                         Color::Red
-                                    } else if data[2] >= expected_data[0] + 35. {
+                                    } else if data[2] >= EXPECTED_VOLTAGE + 35. {
                                         Color::Yellow
-                                    } else if data[2] >= expected_data[0] {
+                                    } else if data[2] >= EXPECTED_VOLTAGE {
                                         Color::Green
-                                    } else if data[2] >= expected_data[0] - 3. {
+                                    } else if data[2] >= EXPECTED_VOLTAGE - 3. {
                                         Color::Yellow
                                     } else {
                                         Color::Red
                                     },
                                 );
-                                output_voltage.set_label(
+                                output_voltage_chart.set_label(
                                     format!(
                                         "Output Voltage : {}V / {}V",
-                                        expected_data[0], data[2]
+                                        EXPECTED_VOLTAGE, data[2]
                                     )
                                     .as_str(),
                                 );
-                                battery_voltage.add(
+                                battery_voltage_chart.add(
                                     data[5],
                                     "",
                                     if data[5] >= 12.72 {
@@ -262,14 +291,14 @@ fn main() {
                                         Color::Red
                                     },
                                 );
-                                battery_voltage.set_label(
+                                battery_voltage_chart.set_label(
                                     format!(
                                         "Battery Voltage : {}V / {}V",
-                                        data[5], expected_data[2]
+                                        data[5], EXPECTED_BATTERY_VOLTAGE
                                     )
                                     .as_str(),
                                 );
-                                power_draw.add(
+                                power_draw_chart.add(
                                     computed_power_draw,
                                     "",
                                     if computed_power_draw <= computed_expected_power_draw + 185. {
@@ -282,21 +311,21 @@ fn main() {
                                         Color::Red
                                     },
                                 );
-                                power_draw.set_label(
+                                power_draw_chart.set_label(
                                     format!(
                                         "Power Draw : {}W / {}W",
                                         computed_expected_power_draw, computed_power_draw
                                     )
                                     .as_str(),
                                 );
-                                battery_state.set_label_color(if flags[0] == 1 {
+                                battery_state_label.set_label_color(if flags[0] == 1 {
                                     Color::Green
                                 } else if flags[2] == 1 {
                                     Color::Yellow
                                 } else {
                                     Color::Red
                                 });
-                                battery_state.set_label(
+                                battery_state_label.set_label(
                                     format!(
                                         "Battery : {}",
                                         if flags[0] == 1 || flags[2] == 1 {
@@ -310,11 +339,14 @@ fn main() {
                                 app.redraw();
                             }
                         }
-                        None => break,
+                        None => {
+                            sleep(Duration::new(5, 0));
+                            break;
+                        }
                     }
-                    thread::sleep(time::Duration::new(1, 0));
+                    sleep(Duration::new(1, 0));
                 }
-                thread::sleep(time::Duration::new(5, 0));
+                auto_shutdown.join().unwrap();
             });
         }
         Err(e) => eprintln!("Error: {}", e),
@@ -347,9 +379,9 @@ get_indexed_string(3) ups info :
 get_indexed_string(4) test ups
 get_indexed_string(24, 16, 8) ups shutdown
 get_indexed_string(29) expected values
-    expected input voltage (V)
-    expected current intensity (dA)
-    expected battery voltage (V)
-    expected input frequency (Hz)
+    expected input voltage (220 V)
+    expected current intensity (3 dA)
+    expected battery voltage (12 V)
+    expected input frequency (50 Hz)
 
 */
