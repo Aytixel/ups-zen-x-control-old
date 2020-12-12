@@ -19,6 +19,28 @@ const EXPECTED_INTENSITY: f64 = 0.3;
 const EXPECTED_BATTERY_VOLTAGE: f64 = 12.;
 const EXPECTED_FREQUENCY: f64 = 50.;
 
+fn init_chart(
+    mut chart: Chart,
+    chart_type: ChartType,
+    frame_type: FrameType,
+    bounds: (f64, f64),
+    color: Color,
+    line_color: Color,
+    label_color: Color,
+    maximum_size: u32,
+) -> Chart {
+    chart.set_type(chart_type);
+    chart.set_frame(frame_type);
+    chart.set_bounds(bounds.0, bounds.1);
+    chart.set_color(color);
+    chart.set_label_color(label_color);
+    chart.set_maximum_size(maximum_size);
+    for _ in 0..maximum_size {
+        chart.add(0., "", line_color);
+    }
+    chart
+}
+
 fn window_setup() -> (
     Window,
     Button,
@@ -47,54 +69,70 @@ fn window_setup() -> (
     shutdown_button.set_frame(FrameType::FlatBox);
     shutdown_button.set_color(Color::from_rgb(41, 41, 41));
     shutdown_button.set_label_color(Color::White);
-    input_voltage_chart.set_type(ChartType::Line);
-    input_voltage_chart.set_bounds(210., 250.);
-    input_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
-    input_voltage_chart.set_label_color(Color::White);
-    input_voltage_chart.set_maximum_size(10);
-    input_voltage_chart.set_frame(FrameType::FlatBox);
-    frequency_chart.set_type(ChartType::Line);
-    frequency_chart.set_bounds(49., 51.);
-    frequency_chart.set_color(Color::from_rgb(41, 41, 41));
-    frequency_chart.set_label_color(Color::White);
-    frequency_chart.set_maximum_size(10);
-    frequency_chart.set_frame(FrameType::FlatBox);
-    current_intensity_chart.set_type(ChartType::Line);
-    current_intensity_chart.set_bounds(0.5, 2.5);
-    current_intensity_chart.set_color(Color::from_rgb(41, 41, 41));
-    current_intensity_chart.set_label_color(Color::White);
-    current_intensity_chart.set_maximum_size(10);
-    current_intensity_chart.set_frame(FrameType::FlatBox);
-    output_voltage_chart.set_type(ChartType::Line);
-    output_voltage_chart.set_bounds(210., 250.);
-    output_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
-    output_voltage_chart.set_label_color(Color::White);
-    output_voltage_chart.set_maximum_size(10);
-    output_voltage_chart.set_frame(FrameType::FlatBox);
-    battery_voltage_chart.set_type(ChartType::Line);
-    battery_voltage_chart.set_bounds(11., 14.);
-    battery_voltage_chart.set_color(Color::from_rgb(41, 41, 41));
-    battery_voltage_chart.set_label_color(Color::White);
-    battery_voltage_chart.set_maximum_size(10);
-    battery_voltage_chart.set_frame(FrameType::FlatBox);
-    power_draw_chart.set_type(ChartType::Line);
-    power_draw_chart.set_bounds(100., 625.);
-    power_draw_chart.set_color(Color::from_rgb(41, 41, 41));
-    power_draw_chart.set_label_color(Color::White);
-    power_draw_chart.set_maximum_size(10);
-    power_draw_chart.set_frame(FrameType::FlatBox);
+    input_voltage_chart = init_chart(
+        input_voltage_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (210., 250.),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
+    frequency_chart = init_chart(
+        frequency_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (49., 51.),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
+    current_intensity_chart = init_chart(
+        current_intensity_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (0.5, 2.5),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
+    output_voltage_chart = init_chart(
+        output_voltage_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (210., 250.),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
+    battery_voltage_chart = init_chart(
+        battery_voltage_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (11., 14.),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
+    power_draw_chart = init_chart(
+        power_draw_chart,
+        ChartType::Line,
+        FrameType::FlatBox,
+        (100., 650.),
+        Color::from_rgb(41, 41, 41),
+        Color::Green,
+        Color::White,
+        10,
+    );
     battery_state_label.set_label_color(Color::Red);
     window.set_color(Color::from_rgb(51, 51, 51));
     window.set_icon(Some(JpegImage::load("icon.jpg").unwrap()));
     window.end();
-    for _ in 0..10 {
-        input_voltage_chart.add(0., "", Color::Green);
-        frequency_chart.add(0., "", Color::Green);
-        current_intensity_chart.add(0., "", Color::Green);
-        power_draw_chart.add(0., "", Color::Green);
-        output_voltage_chart.add(0., "", Color::Green);
-        battery_voltage_chart.add(0., "", Color::Green);
-    }
     (
         window,
         test_button,
